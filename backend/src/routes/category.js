@@ -28,4 +28,45 @@ router.post("/", async (req, res) => {
   }
 });
 
+// PUT /category/:id
+router.put("/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updatedData = req.body;
+
+    const result = await db.collection("categories").updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updatedData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    res.json({ message: "Category updated successfully" });
+  } catch (error) {
+    console.error("Update failed", error);
+    res.status(500).json({ message: "Server error while updating category" });
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const result = await db
+      .collection("categories")
+      .deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    res.json({ message: "Category deleted successfully" });
+  } catch (error) {
+    console.error("Delete failed:", error);
+    res.status(500).json({ message: "Server error while deleting category" });
+  }
+});
+
 export default router;
