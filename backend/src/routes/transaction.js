@@ -1,3 +1,4 @@
+// routes/transaction.js
 import express from "express";
 import db from "../db/conn.js";
 import { ObjectId } from "mongodb";
@@ -6,12 +7,111 @@ const router = express.Router();
 
 // -----------------------------
 // GET: all transactions
+// Sorted by latest first
+// Grouped by month on backend
+// -----------------------------
+// -----------------------------
+// GET: all transactions
+// Sorted, joined with category,
+// grouped by month WITH totals
 // -----------------------------
 router.get("/", async (req, res) => {
   try {
-    let collection = await db.collection("transactions");
-    let results = await collection.find({}).sort({ date: -1 }).toArray();
-    res.send(results).status(200);
+    const collection = await db.collection("transactions");
+
+    const results = await collection
+      .aggregate([
+        // Join category
+        {
+          $lookup: {
+            from: "categories",
+            localField: "categoryId",
+            foreignField: "_id",
+            as: "category",
+          },
+        },
+        { $unwind: "$category" },
+
+        // Ensure date is Date type for sorting/grouping
+        {
+          $addFields: {
+            date: { $toDate: "$date" },
+          },
+        },
+
+        // Sort latest first (within each month this order will be preserved)
+        {
+          $sort: {
+            date: -1,
+            _id: -1,
+          },
+        },
+
+        // Group by year + month
+        {
+          $group: {
+            _id: {
+              year: { $year: "$date" },
+              month: { $month: "$date" },
+            },
+            transactions: { $push: "$$ROOT" },
+            totalIncome: {
+              $sum: {
+                $cond: [{ $eq: ["$type", "income"] }, "$amount", 0],
+              },
+            },
+            totalExpense: {
+              $sum: {
+                $cond: [{ $eq: ["$type", "expense"] }, "$amount", 0],
+              },
+            },
+          },
+        },
+
+        // Project a nice month label + net
+        {
+          $addFields: {
+            monthDate: {
+              $dateFromParts: {
+                year: "$_id.year",
+                month: "$_id.month",
+                day: 1,
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            month: {
+              $dateToString: {
+                date: "$monthDate",
+                format: "%b %Y", // e.g. "Dec 2023"
+              },
+            },
+            transactions: 1,
+            totalIncome: 1,
+            totalExpense: 1,
+            net: { $subtract: ["$totalIncome", "$totalExpense"] },
+            monthDate: 1,
+          },
+        },
+
+        // Sort months (latest first)
+        {
+          $sort: {
+            monthDate: -1,
+          },
+        },
+        {
+          $project: {
+            monthDate: 0,
+          },
+        },
+      ])
+      .toArray();
+
+    res.status(200).send(results);
   } catch (err) {
     console.error("Error fetching transactions:", err);
     res.status(500).send("Error fetching transactions");
@@ -20,41 +120,44 @@ router.get("/", async (req, res) => {
 
 // -----------------------------
 // POST: create a new transaction
-// payload example:
-// {
-//   date: "2023-12-28",
-//   type: "income",
-//   amount: 1500,
-//   note: "Salary"
-// }
 // -----------------------------
 router.post("/", async (req, res) => {
   try {
-    let transaction = {
-      date: req.body.date,
-      type: req.body.type,
-      amount: req.body.amount,
-      note: req.body.note || "",
+    const { date, type, amount, note, categoryId } = req.body;
+
+    const transaction = {
+      date: new Date(date),        // store as Date
+      type,                        // "income" | "expense"
+      amount: Number(amount),
+      note: note || "",
+      categoryId: new ObjectId(categoryId),
     };
 
-    let collection = await db.collection("transactions");
-    let result = await collection.insertOne(transaction);
+    const collection = await db.collection("transactions");
+    const result = await collection.insertOne(transaction);
 
-    res.send(result).status(201);
+    res.status(201).send(result);
   } catch (err) {
-    console.error(err);
+    console.error("Error adding transaction:", err);
     res.status(500).send("Error adding transaction");
   }
 });
 
 // -----------------------------
 // PUT /transaction/:id
-// Update a transaction
 // -----------------------------
 router.put("/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const updates = req.body;
+    const { date, type, amount, note, categoryId } = req.body;
+
+    const updates = {
+      ...(date && { date: new Date(date) }),
+      ...(type && { type }),
+      ...(amount !== undefined && { amount: Number(amount) }),
+      ...(note !== undefined && { note }),
+      ...(categoryId && { categoryId: new ObjectId(categoryId) }),
+    };
 
     const result = await db.collection("transactions").updateOne(
       { _id: new ObjectId(id) },
@@ -68,7 +171,9 @@ router.put("/:id", async (req, res) => {
     res.json({ message: "Transaction updated successfully" });
   } catch (error) {
     console.error("Update failed", error);
-    res.status(500).json({ message: "Server error while updating transaction" });
+    res
+      .status(500)
+      .json({ message: "Server error while updating transaction" });
   }
 });
 
@@ -90,7 +195,9 @@ router.delete("/:id", async (req, res) => {
     res.json({ message: "Transaction deleted successfully" });
   } catch (error) {
     console.error("Delete failed:", error);
-    res.status(500).json({ message: "Server error while deleting transaction" });
+    res
+      .status(500)
+      .json({ message: "Server error while deleting transaction" });
   }
 });
 
