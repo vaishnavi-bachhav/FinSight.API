@@ -12,9 +12,6 @@ router.get("/rate", async (req, res) => {
       params: { base, symbols },
     });
 
-    console.log
-("FX API response:", response.data);
-
     res.json({
       base: response.data.base,
       date: response.data.date,
