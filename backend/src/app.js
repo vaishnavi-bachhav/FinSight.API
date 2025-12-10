@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import categories from "./routes/category.js";
 import transactions from "./routes/transaction.js";
+import currency from "./routes/currency.js";
 
 dotenv.config();
 const app = express();
@@ -11,6 +12,7 @@ app.use(cors());
 app.use(express.json());
 app.use("/category", categories);
 app.use("/transaction", transactions);
+app.use("/currency", currency);
 
 // start the Express server
 app.listen(PORT, () => {
