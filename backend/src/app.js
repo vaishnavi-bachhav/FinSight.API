@@ -12,9 +12,6 @@ if (!process.env.CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
   console.error("❌ Clerk Keys Missing in Backend Env File");
   process.exit(1);
 }
-console.log("Clerk Publishable Key:", process.env.CLERK_PUBLISHABLE_KEY);
-console.log("Clerk Secret Key:", process.env.CLERK_SECRET_KEY);
-
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 // CORS must allow credentials + exact origin
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: process.env.FRONTEND_URL,
     credentials: true,
   })
 );
