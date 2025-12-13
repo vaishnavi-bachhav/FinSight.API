@@ -5,38 +5,58 @@ import { clerkMiddleware, requireAuth } from "@clerk/express";
 import categories from "./routes/category.js";
 import transactions from "./routes/transaction.js";
 import currency from "./routes/currency.js";
+import test from "./routes/test.js";
 
 dotenv.config();
 
-if (!process.env.CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
-  console.error("❌ Clerk Keys Missing in Backend Env File");
-  process.exit(1);
-}
-
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
-// CORS must allow credentials + exact origin
+// -----------------------------
+// Health Check (NO AUTH)
+// -----------------------------
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "finsight-api",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// CORS
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: process.env.FRONTEND_URL || "http://localhost:5173/",
     credentials: true,
   })
 );
 
 app.use(express.json());
 
-// Clerk middleware must come before protected routes
+
+
+// Clerk middleware
 app.use(clerkMiddleware());
 
-// Protected API routes
+// Protected routes
 app.use("/category", requireAuth(), categories);
 app.use("/transaction", requireAuth(), transactions);
 
-// Unprotected (external API passthrough)
+// External APIs (no auth)
 app.use("/currency", currency);
+app.use("/test", test);
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server listening on port ${PORT}`);
+});
+
+app.get("/status", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "everything went ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
 });
