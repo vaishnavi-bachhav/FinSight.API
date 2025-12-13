@@ -22,103 +22,87 @@ router.get("/", async (req, res) => {
     const collection = await db.collection("transactions");
 
     const results = await collection
-      .aggregate([
-        // 🔐 Only this user's transactions
-        {
-          $match: {
-            userId, // userId stored as string from Clerk
-          },
-        },
+  .aggregate([
+    { $match: { userId } },
 
-        // Join category
-        {
-          $lookup: {
-            from: "categories",
-            localField: "categoryId",
-            foreignField: "_id",
-            as: "category",
-          },
-        },
-        { $unwind: "$category" },
+    {
+      $lookup: {
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        as: "category",
+      },
+    },
 
-        // Ensure date is Date type for sorting/grouping
-        {
-          $addFields: {
-            date: { $toDate: "$date" },
-          },
-        },
+    // ✅ keep tx even if category doesn't exist
+    {
+      $unwind: {
+        path: "$category",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
 
-        // Sort latest first (within each month this order will be preserved)
-        {
-          $sort: {
-            date: -1,
-            _id: -1,
-          },
+    // ✅ fallback category object
+    {
+      $addFields: {
+        category: {
+          $ifNull: [
+            "$category",
+            { _id: null, name: "Uncategorized", type: "$type", icon: null },
+          ],
         },
+      },
+    },
 
-        // Group by year + month
-        {
-          $group: {
-            _id: {
-              year: { $year: "$date" },
-              month: { $month: "$date" },
-            },
-            transactions: { $push: "$$ROOT" },
-            totalIncome: {
-              $sum: {
-                $cond: [{ $eq: ["$type", "income"] }, "$amount", 0],
-              },
-            },
-            totalExpense: {
-              $sum: {
-                $cond: [{ $eq: ["$type", "expense"] }, "$amount", 0],
-              },
-            },
-          },
-        },
+    { $addFields: { date: { $toDate: "$date" } } },
 
-        // Project a nice month label + net
-        {
-          $addFields: {
-            monthDate: {
-              $dateFromParts: {
-                year: "$_id.year",
-                month: "$_id.month",
-                day: 1,
-              },
-            },
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            month: {
-              $dateToString: {
-                date: "$monthDate",
-                format: "%b %Y", // e.g. "Dec 2023"
-              },
-            },
-            transactions: 1,
-            totalIncome: 1,
-            totalExpense: 1,
-            net: { $subtract: ["$totalIncome", "$totalExpense"] },
-            monthDate: 1,
-          },
-        },
+    { $sort: { date: -1, _id: -1 } },
 
-        // Sort months (latest first)
-        {
-          $sort: {
-            monthDate: -1,
+    {
+      $group: {
+        _id: {
+          year: { $year: "$date" },
+          month: { $month: "$date" },
+        },
+        transactions: { $push: "$$ROOT" },
+        totalIncome: {
+          $sum: { $cond: [{ $eq: ["$type", "income"] }, "$amount", 0] },
+        },
+        totalExpense: {
+          $sum: { $cond: [{ $eq: ["$type", "expense"] }, "$amount", 0] },
+        },
+      },
+    },
+
+    {
+      $addFields: {
+        monthDate: {
+          $dateFromParts: {
+            year: "$_id.year",
+            month: "$_id.month",
+            day: 1,
           },
         },
-        {
-          $project: {
-            monthDate: 0,
-          },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        month: {
+          $dateToString: { date: "$monthDate", format: "%b %Y" },
         },
-      ])
-      .toArray();
+        transactions: 1,
+        totalIncome: 1,
+        totalExpense: 1,
+        net: { $subtract: ["$totalIncome", "$totalExpense"] },
+        monthDate: 1,
+      },
+    },
+
+    { $sort: { monthDate: -1 } },
+    { $project: { monthDate: 0 } },
+  ])
+  .toArray();
 
     res.status(200).send(results);
   } catch (err) {
